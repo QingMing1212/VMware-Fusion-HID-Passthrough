@@ -1,147 +1,85 @@
-# 🏎️ WMMT5DX Apple Silicon Guide
+# VMware Fusion HID Passthrough Debugging
 
-### M 芯片 Mac 运行《湾岸5DX》及 Xbox 手柄适配指南
+### VMware Fusion USB HID 直通故障排查｜Apple Silicon Mac 实测
 
-**[简体中文](#中文指南) | [English](#english-summary)**
+**[中文](#问题与结论) · [English](#english-summary) · [完整实验报告](docs/HID-Debug-Report.md) · [《湾岸5DX》实战教程](docs/WMMT5DX-Guide.md)**
 
-<a id="中文指南"></a>
+> **项目定位**：记录 VMware Fusion 在 Apple Silicon Mac 上直通 Xbox 兼容 USB HID 手柄时遇到的保护性拦截，并提供一项真实环境中成功的临时设备辅助连接方法。这里不是 VMware 漏洞披露，也不是针对所有版本的通用修复补丁。
 
-本项目记录了在 **Apple Silicon Mac** 上，通过 **VMware Fusion + Windows 11 ARM + JConfig** 运行《湾岸5DX》，并使用 Xbox 兼容手柄控制的实测过程。
+## 问题与结论
 
-针对 VMware USB 设备列表中找不到手柄、Windows ARM `joy.cpl` 无法识别控制器、JConfig 数字按键或模拟踏板无法工作的情况提供排查步骤。
+当尝试把 Xbox 兼容手柄连接至 Windows ARM 虚拟机时，VMware Fusion 可能提示：
 
-## ✅ 测试环境与验证范围
+> **The host requires this device for input.**
 
-| 项目 | 本次测试配置 |
+在我们的环境中，手柄已经能在 macOS 中识别、Windows 也曾成功使用过它，但在拔出并重新连接后遇到了上述提示。即使为 USB 设备设置了 **Connect to this virtual machine**，问题仍然存在。
+
+### 实测成功的临时解决方法
+
+1. 确保 **MacBook 内置键盘和触控板正常使用**，不要把宿主机最后一个可靠的输入设备直通到虚拟机。
+2. 额外连接一只可供 **macOS 宿主机**使用的 USB 鼠标。本例为 Rapoo 鼠标；**不要把这只鼠标直通给 Windows**。
+3. 在 VMware Fusion 的 **USB 与蓝牙** 菜单中，选择 Xbox 兼容手柄（本例显示为 `2.4G XBOX 360 For Windows`），将其连接到 Windows 虚拟机。
+4. 在本次测试中，手柄此时**成功连接到 Windows**。
+5. 之后我们拔掉了临时接入的 Rapoo 鼠标，**Windows 中已建立的手柄连接仍保持正常，MacBook 内置输入设备也正常**。
+
+**重要限制**：以上是本机、本设备组合的一次成功排障记录，并非已验证的跨版本通用操作流程；没有证明下一次热插拔可以自动重连。
+
+### 关键对照观察
+
+| 操作／状态 | 观察结果 |
 |---|---|
-| 电脑 | Apple Silicon Mac |
-| 虚拟化 | VMware Fusion |
-| 虚拟机操作系统 | Windows 11 ARM64 |
-| 游戏 | Wangan Midnight Maximum Tune 5DX |
-| 输入工具 | JConfig 1.8 |
-| 手柄 | 盖世小鸡启明星 2（GameSir Nova 2 Lite） |
-| 连接方式 | USB 数据线、绿色 Xbox/XInput 模式 |
+| 只连接 Xbox 兼容手柄，尝试直通 Windows | ❌ 提示 `The host requires this device for input` |
+| 额外接入 Rapoo 鼠标，保留给 macOS，再直通手柄 | ✅ 手柄直通成功 |
+| 手柄已直通后，尝试把 Rapoo 鼠标也交给 Windows | ❌ 鼠标直通受到保护性限制 |
+| 手柄已直通后，直接拔掉 Rapoo 鼠标 | ✅ 手柄保持连接，Mac 内置键盘及触控板正常 |
 
-**已实测**：Windows 能识别控制器；JConfig 接收 XInput 数字按钮；游戏内可使用手柄进入 Test Mode；方向盘、油门、刹车在游戏测试界面有响应。
+**我们能合理推测**：Fusion 的 HID 保护规则参与了设备连接准入；它对新连接的判断与对已建立连接的维持可能不同。**我们尚不能证明**它使用简单的“USB HID 数量”算法，或为什么内置键盘／触控板没有直接解除这次限制。
 
-**仍需验证**：`Fake Analog Pedals` 是否保留 RT/LT 的完整线性踏板精度；其他手柄型号和 VMware 版本的兼容性。本指南不保证所有环境均适用。
+## 与 `.vmx` 参数的关系
 
-## 🔧 安装与配置
-
-### 1. 让 VMware 显示隐藏的 Xbox USB 手柄
-
-1. **完全关机** Windows 虚拟机，不要只暂停。
-2. 退出 VMware Fusion。
-3. 在 Finder 中找到 `.vmwarevm` 虚拟机包，右键选择「显示包内容」。
-4. **备份原始 `.vmx` 文件**，再用文本编辑器打开它。
-5. 如果下面的键不存在，新增一行；如果已经存在，只修改原来的值：
-
-   ```ini
-   usb.generic.allowHID = "TRUE"
-   ```
-
-6. 保存并重启 VMware。前往虚拟机的 USB 设备设置，寻找 `XBOX 360 For Windows`（名称可能因型号而异）。
-
-**切勿把 Mac 键盘或鼠标错误地直通到 Windows。** 本次测试的鼠标在列表中显示为 `Shenzhen Rapoo Rapoo Gaming Device`，不是手柄。
-
-![VMware USB 列表中出现 Xbox 360 兼容手柄](screenshots/usb-passthrough.webp)
-
-### 2. 手柄 USB 直通与 Windows 测试
-
-1. 用 USB 数据线将手柄连接到 Mac。
-2. 启明星 2 切换到 **绿色 Xbox / XInput 模式**（本次测试按住 M 查看模式灯颜色）。
-3. 在 VMware 的「USB 与蓝牙」中，仅将 Xbox 兼容手柄连接至 Windows。
-4. Windows 按 `Win + R`，运行 `joy.cpl`。
-5. 选择 `Controller (XBOX 360 For Windows)`，打开「属性」，验证左摇杆、LT 和 RT 输入。
-
-![Windows 游戏控制器中出现 Xbox 360 控制器](screenshots/windows-controller.webp)
-
-### 3. JConfig 按键配置
-
-打开 `JConfigWM5.exe`，将 `Joystick Type` 设为 **XInput (Xbox Gamepad)**，再逐项测试按钮绑定。
-
-以下布局是本次实际使用的配置方案。不同手柄的按钮编号可能不同，请以绑定反馈为准。
-
-| 游戏功能 | 手柄按键 |
-|---|---|
-| START | A |
-| TEST MODE | View（Home 左边） |
-| EXIT | Menu（Home 右边） |
-| MENU UP / DOWN | 十字键上 / 下 |
-| ENTER SWITCH | X |
-| PERSPECTIVE | Y |
-| INTERRUPTION | B |
-| GEAR SHIFT UP / DOWN | RB / LB |
-| 方向盘 | 左摇杆（水平） |
-| ACCEL（油门） | RT |
-| BRAKE（刹车） | LT |
-
-> 本次测试中，纯 XInput 模式下原有键盘 T / Esc 的操作异常。我们改为把 TEST MODE、EXIT 和测试菜单操作绑定到手柄。你的键盘是否可同时使用取决于具体版本与配置。
-
-![JConfig XInput 按键配置界面](screenshots/jconfig-xinput.webp)
-
-### 4. JVS Settings：方向盘、油门、刹车
-
-在 JConfig 的 `Settings` → `JVS Settings` 中，本次成功配置是：
-
-- `Fake Analog Steering wheel`：**关闭**（左摇杆转向已正常）
-- `Fake Analog Pedals`：**开启**
-- `ACCEL`：单独绑定 **RT**
-- `BRAKE`：单独绑定 **LT**
-- `Terminal Emulator`：保持**开启**
-- `Terminal Mode`：保持**关闭**
-- `FreePlay` 和 `Save Patch`：如果你原先依赖它们正常运行，则保持原样
-
-不要把 `ACCEL/BRAKE` 的按钮绑定与 `Fake Analog Pedals` 二选一：我们实际是**同时设置**后才在游戏里读到了踏板动作。
-
-### 5. 游戏内验收
-
-进入 `TEST MODE` → `入出力テスト`（I/O）→ `スイッチテスト`（Switch Test）。
-
-逐项操作并观察数值：
-
-- 左摇杆左右：`ハンドル`（方向盘）
-- RT：`アクセル`（油门）
-- LT：`ブレーキ`（刹车）
-
-**验收标准：** 实际推动摇杆、扣动扳机时，确认数值发生变化。由于暂未保留该操作的动态输入截图，本项目不以静态图片作为模拟量已验证的证据。
-
-## 🧩 常见问题
-
-**Q：macOS 能在 USB 设备树中看到 `XBOX 360 For Windows`，但 VMware USB 列表为空？** 先确认虚拟机已完全关机、`.vmx` 的 `usb.generic.allowHID` 已生效，并检查是否选中了正确虚拟机。
-
-**Q：蓝灯可以显示 `Wireless Controller`，绿灯却在 Windows 的 `joy.cpl` 消失？** 检查绿灯模式对应的 USB 设备是否重新被 VMware 直通。切换硬件模式后，设备可能重新枚举。
-
-**Q：Windows `joy.cpl` 成功，但游戏中按键不响应？** 检查 JConfig 是否在 XInput 模式下重新绑定了数字按钮，并用 TEST MODE 验证。
-
-**Q：方向盘正常，RT/LT 油门刹车没反应？** 在 JConfig 中把 `ACCEL`、`BRAKE` 分别绑定 RT、LT，并在 JVS Settings 开启 `Fake Analog Pedals`，保存、重启游戏再测试。
-
-## 📜 许可、声明与第三方权利
-
-本仓库中的**原创文字教程以及由项目维护者提供的原创截图**采用 [Creative Commons Attribution 4.0 International（CC BY 4.0）](https://creativecommons.org/licenses/by/4.0/) 授权。复制、分享、翻译或改编时，请保留适当署名、原始链接、许可证链接，并说明是否修改。
-
-版权所有 © 2026 QingMing1212。详见 [LICENSE](LICENSE)。
-
-本许可**不涵盖**第三方游戏、商标、应用程序、脚本、界面美术及其他非本项目原创材料；这些材料的权利仍归原权利人所有。截图中的第三方界面仅用于展示测试过程，不代表对界面本身拥有著作权。
-
-本仓库不提供游戏本体、破解文件、未经授权的程序及下载链接。本项目与 Bandai Namco、VMware、GameSir 均无官方关联；请遵守你所在地法律和各软件许可条款。
-
----
-
-<a id="english-summary"></a>
-
-## 🌍 English summary
-
-This guide documents a tested Apple Silicon Mac setup for **Wangan Midnight Maximum Tune 5DX** using **VMware Fusion, Windows 11 ARM64, JConfig 1.8, and a GameSir Nova 2 Lite controller**.
-
-**Important USB passthrough fix:** fully shut down the VM, back up its `.vmx` file, and add:
+我们的可运行配置中包含：
 
 ```ini
 usb.generic.allowHID = "TRUE"
 ```
 
-In VMware, connect the Xbox 360-compatible USB device to the Windows guest. Verify controller inputs in `joy.cpl`. In JConfig choose **XInput**, bind controller buttons, and map **RT/LT** to **ACCEL/BRAKE**, while enabling **Fake Analog Pedals** and disabling **Fake Analog Steering wheel**.
+它可能使 HID 设备出现在可供直通的列表中，但 **我们没有独立完成开启／关闭该项的对照实验**，不将其断言为所有环境的必要条件。
 
-**Verified:** the game receives steering, accelerator and brake input in its I/O test. **Not fully verified:** whether fake-analog pedals preserve the full analog trigger range and whether the setup works with other controllers.
+Broadcom 官方文档还提到 `usb.generic.allowLastHID = "TRUE"`，用于允许将剩余的最后一个 HID 设备从宿主机移走。**这不是本项目推荐的绕行方法**：在我们的虚拟机里，加入该行后曾出现 `VMX file is corrupt`，删除新增行后恢复启动。该现象的确切原因仍未查明，不能因此断言该参数本身有缺陷。更重要的是，允许移走最后一个 HID 设备可能让宿主机暂时失去输入手段。
 
-The original guide text and project-owned screenshots are licensed under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/). Third-party rights remain with their owners. Contributions and reproducibility reports are welcome.
+- [Broadcom 知识库：Connecting a second mouse or keyboard directly to a Fusion virtual machine（文章 344342）](https://knowledge.broadcom.com/external/article/344342)
+- [完整 Debug 实验报告与证据边界](docs/HID-Debug-Report.md)
+
+## 适用环境
+
+- **宿主机**：Apple Silicon Mac（本机具体 macOS 和 Fusion 构建号尚待补充）
+- **虚拟机**：VMware Fusion + Windows 11 ARM64
+- **手柄**：GameSir Nova 2 Lite（盖世小鸡启明星2），USB 数据线连接，绿色 Xbox／XInput 模式
+- **辅助设备**：Rapoo USB 鼠标，始终保留在 macOS；直通设备列表中曾显示 `Shenzhen Rapoo Rapoo Gaming Device`
+- **验证工具**：Windows `joy.cpl`、JConfig 1.8、《湾岸5DX》游戏内 I/O 测试
+
+我们尚未覆盖 Intel Mac、其他游戏手柄、其他 VMware Fusion 版本或 Windows x64 虚拟机。
+
+## 实战案例：《湾岸5DX》
+
+本项目起源于 **Apple Silicon Mac + VMware Fusion + Windows ARM + JConfig** 运行《湾岸5DX》的手柄排查。原教程完整保留，包括 USB 识别、Windows `joy.cpl`、XInput 按键绑定、JVS 油门和刹车处理。
+
+**[查看完整《湾岸5DX》教程](docs/WMMT5DX-Guide.md)**
+
+## 贡献与复现
+
+欢迎报告 **Fusion 版本、macOS 版本、输入设备型号、是否热插拔、是否成功、错误提示**，帮助进一步验证。目前的结果属于单一环境中的观察，不应据此将其定性为可利用的安全漏洞。
+
+## 许可与声明
+
+原创文档与本项目拥有权利的原创截图遵循 [CC BY 4.0](LICENSE)；第三方软件、游戏、品牌及界面素材仍归原权利人。本文不是 Broadcom／VMware／Bandai Namco／GameSir 官方说明。
+
+---
+
+<a id="english-summary"></a>
+
+## English summary
+
+**Observed HID passthrough workaround on Apple Silicon VMware Fusion:** when an Xbox-compatible USB gamepad was rejected with `The host requires this device for input`, temporarily attaching an additional USB mouse **to the macOS host** allowed the gamepad to be passed through to a Windows 11 ARM VM. After the passthrough was established, the temporary mouse could be unplugged without disrupting the existing gamepad connection; the MacBook keyboard and trackpad remained functional.
+
+This is a **single-environment empirical observation**, not proof of a VMware vulnerability, a universal fix, or any specific internal HID counting algorithm. Read the [full test report](docs/HID-Debug-Report.md) and [WMMT5DX game setup](docs/WMMT5DX-Guide.md).
